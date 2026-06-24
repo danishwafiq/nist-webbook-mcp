@@ -647,11 +647,12 @@ async def nist_list_supported_fluids() -> str:
 if __name__ == "__main__":
     import os
     if "--http" in sys.argv:
-        # "streamable-http" (hyphen) is the correct transport name in mcp >= 1.2
-        # host must be 0.0.0.0 so Railway's network can reach the container
-        # PORT is set automatically by Railway
         port = int(os.environ.get("PORT", 8000))
+        # Set host/port via settings — works across all FastMCP versions
+        # because mcp.run() only reliably accepts 'transport'
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = port
         print(f"Starting NIST WebBook MCP server on HTTP port {port}...", file=sys.stderr)
-        mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+        mcp.run(transport="streamable-http")
     else:
         mcp.run()
