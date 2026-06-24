@@ -645,12 +645,14 @@ async def nist_list_supported_fluids() -> str:
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    # Default: stdio for local Claude Desktop use
-    # For remote deployment: mcp.run(transport="streamable_http", port=8000)
+    import os
     transport = "streamable_http" if "--http" in sys.argv else "stdio"
-    port = 8000
     if transport == "streamable_http":
+        # FastMCP reads port from the PORT env var (set by Railway automatically)
+        # or falls back to 8000. We set it here before calling run().
+        port = int(os.environ.get("PORT", 8000))
+        os.environ["FASTMCP_PORT"] = str(port)
         print(f"Starting NIST WebBook MCP server on HTTP port {port}...", file=sys.stderr)
-        mcp.run(transport="streamable_http", port=port)
+        mcp.run(transport="streamable_http")
     else:
         mcp.run()
