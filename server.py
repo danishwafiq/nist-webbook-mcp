@@ -646,16 +646,28 @@ async def nist_list_supported_fluids() -> str:
 
 if __name__ == "__main__":
     import os
+    import uvicorn
+    from mcp.server.fastmcp import FastMCP
+
     if "--http" in sys.argv:
         port = int(os.environ.get("PORT", 8000))
-        # Set host/port via settings — works across all FastMCP versions
-        # because mcp.run() only reliably accepts 'transport'
+
+        # Configure FastMCP settings
         mcp.settings.host = "0.0.0.0"
         mcp.settings.port = port
+        mcp.settings.stateless_http = True   # Required for Claude.ai connector
+
+        # Build the ASGI app and run via uvicorn directly.
+        # This bypasses FastMCP's internal uvicorn call so we can pass
+        # forwarded_allow_ips="*" — which disables the "Invalid Host header"
+        # error that Railway's reverse proxy triggers.
+        app = mcp.streamable_http_app()
         print(f"Starting NIST WebBook MCP server on HTTP port {port}...", file=sys.stderr)
-        print("MCP VERSION INFO", file=sys.stderr)
-        print(type(mcp.settings), file=sys.stderr)
-        print(mcp.settings.model_dump(), file=sys.stderr)
-        mcp.run(transport="streamable-http")
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=port,
+            forwarded_allow_ips="*",   # Trust Railway's reverse proxy headers
+        )
     else:
         mcp.run()
