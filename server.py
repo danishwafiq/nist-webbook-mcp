@@ -30,32 +30,34 @@ HEADERS = {
 }
 
 # Fluid IDs used by NIST thermophysical properties endpoint
+# NIST fluid.cgi uses CAS numbers prefixed with 'C' as fluid IDs
+# Source: actual NIST WebBook URLs (e.g. C7732185 = water)
 FLUID_IDS = {
-    "water": "Water", "h2o": "Water",
-    "nitrogen": "Nitrogen", "n2": "Nitrogen",
-    "hydrogen": "Hydrogen", "h2": "Hydrogen",
-    "oxygen": "Oxygen", "o2": "Oxygen",
-    "carbon dioxide": "CarbonDioxide", "co2": "CarbonDioxide",
-    "carbon monoxide": "CarbonMonoxide", "co": "CarbonMonoxide",
-    "methane": "Methane", "ch4": "Methane",
-    "ethane": "Ethane", "c2h6": "Ethane",
-    "propane": "Propane", "c3h8": "Propane",
-    "butane": "Butane",
-    "pentane": "Pentane",
-    "hexane": "Hexane",
-    "heptane": "Heptane",
-    "octane": "Octane",
-    "ammonia": "Ammonia", "nh3": "Ammonia",
-    "methanol": "Methanol",
-    "ethanol": "Ethanol",
-    "benzene": "Benzene",
-    "toluene": "Toluene",
-    "argon": "Argon", "ar": "Argon",
-    "helium": "Helium", "he": "Helium",
-    "hydrogen sulfide": "HydrogenSulfide", "h2s": "HydrogenSulfide",
-    "sulfur dioxide": "SulfurDioxide", "so2": "SulfurDioxide",
-    "cyclohexane": "Cyclohexane",
-    "acetone": "Acetone",
+    "water": "C7732185", "h2o": "C7732185",
+    "nitrogen": "C7727379", "n2": "C7727379",
+    "hydrogen": "C1333740", "h2": "C1333740",
+    "oxygen": "C7782447", "o2": "C7782447",
+    "carbon dioxide": "C124389", "co2": "C124389",
+    "carbon monoxide": "C630080", "co": "C630080",
+    "methane": "C74828", "ch4": "C74828",
+    "ethane": "C74840", "c2h6": "C74840",
+    "propane": "C74986", "c3h8": "C74986",
+    "butane": "C106978",
+    "pentane": "C109660",
+    "hexane": "C110543",
+    "heptane": "C142825",
+    "octane": "C111659",
+    "ammonia": "C7664417", "nh3": "C7664417",
+    "methanol": "C67561",
+    "ethanol": "C64175",
+    "benzene": "C71432",
+    "toluene": "C108883",
+    "argon": "C7440371", "ar": "C7440371",
+    "helium": "C7440597", "he": "C7440597",
+    "hydrogen sulfide": "C7783064", "h2s": "C7783064",
+    "sulfur dioxide": "C7446095", "so2": "C7446095",
+    "cyclohexane": "C110827",
+    "acetone": "C67641",
 }
 
 # ─── Server init ──────────────────────────────────────────────────────────────
@@ -404,14 +406,15 @@ async def nist_get_thermophysical(params: ThermophysicalInput) -> str:
             f"For other compounds, use nist_search_compound instead."
         )
 
+    t_inc = round(max(1.0, (params.T_max - params.T_min) / 20), 4)
     fluid_params = {
         "Action": "Load",
         "ID": fluid_id,
         "Type": "IsoBar",
         "Digits": "5",
-        "THigh": str(params.T_max),
-        "TLow": str(params.T_min),
-        "TInc": str(max(1.0, (params.T_max - params.T_min) / 20)),
+        "THigh": f"{params.T_max:.4f}",
+        "TLow": f"{params.T_min:.4f}",
+        "TInc": f"{t_inc:.4f}",
         "RefState": "DEF",
         "TUnit": "K",
         "PUnit": "MPa",
@@ -420,7 +423,7 @@ async def nist_get_thermophysical(params: ThermophysicalInput) -> str:
         "WUnit": "m/s",
         "VisUnit": "uPa*s",
         "STUnit": "N/m",
-        "P": str(params.pressure_MPa),
+        "P": f"{params.pressure_MPa:.6f}",
     }
 
     try:
@@ -526,14 +529,15 @@ async def nist_get_saturation(params: SaturationInput) -> str:
             f"Supported: {', '.join(supported[:30])}..."
         )
 
+    t_inc_sat = round(max(1.0, (params.T_max - params.T_min) / 20), 4)
     sat_params = {
         "Action": "Load",
         "ID": fluid_id,
         "Type": "SatT",
         "Digits": "5",
-        "THigh": str(params.T_max),
-        "TLow": str(params.T_min),
-        "TInc": str(max(1.0, (params.T_max - params.T_min) / 20)),
+        "THigh": f"{params.T_max:.4f}",
+        "TLow": f"{params.T_min:.4f}",
+        "TInc": f"{t_inc_sat:.4f}",
         "RefState": "DEF",
         "TUnit": "K",
         "PUnit": "MPa",
@@ -620,20 +624,25 @@ async def nist_list_supported_fluids() -> str:
     Returns:
         str: Alphabetical list of supported fluid names and their aliases.
     """
-    unique = {}
-    for alias, fluid_id in sorted(FLUID_IDS.items()):
-        if fluid_id not in unique:
-            unique[fluid_id] = []
-        if alias != fluid_id.lower():
-            unique[fluid_id].append(alias)
+    # Build display: primary name -> aliases
+    # Primary name = the first (shortest) alias that maps to each CAS ID
+    cas_to_aliases: dict = {}
+    for alias, cas_id in FLUID_IDS.items():
+        cas_to_aliases.setdefault(cas_id, []).append(alias)
+
+    rows = []
+    for cas_id, aliases in sorted(cas_to_aliases.items(), key=lambda x: x[1][0]):
+        primary = min(aliases, key=len)
+        others = [a for a in aliases if a != primary]
+        rows.append((primary.title(), ', '.join(others) if others else '—'))
 
     lines = ["# Supported Fluids for Thermophysical Data\n",
              "Use any of these names (or listed aliases) with `nist_get_thermophysical` "
              "or `nist_get_saturation`.\n",
              "| Fluid | Aliases |",
              "| --- | --- |"]
-    for fluid_id, aliases in sorted(unique.items()):
-        lines.append(f"| {fluid_id} | {', '.join(aliases) if aliases else '—'} |")
+    for name, aliases in sorted(rows):
+        lines.append(f"| {name} | {aliases} |")
 
     lines.append(
         "\n*For compounds not in this list, use `nist_search_compound` to retrieve "
